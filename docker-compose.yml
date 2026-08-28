@@ -1,0 +1,35 @@
+services: 
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: system-design-lab-localstack
+
+    ports:
+      - "4566:4566"
+
+    environment:
+      - SERVICES=dynamodb
+      - DEBUG=0
+      - AWS_DEFAULT_REGION=ap-south-1
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+    
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: system-design-lab-valkey
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - valkey_data:/data
+
+    command: valkey-server --appendonly yes
+
+volumes:
+  localstack_data:
+  valkey_data:
+
