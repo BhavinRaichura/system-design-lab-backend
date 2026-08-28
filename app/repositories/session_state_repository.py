@@ -1,6 +1,8 @@
 import json
 
+from app.config.settings import settings
 from app.db.redis import redis_client
+
 
 class SessionStateRepository:
 
@@ -41,3 +43,19 @@ class SessionStateRepository:
         redis_client.delete(
             self._key(session_id=session_id)
         )
+
+    def should_persist(
+        self,
+        session_id: str,
+    ) -> bool:
+
+        key = f"session:{session_id}:persistence"
+
+        created = redis_client.set(
+            key,
+            "1",
+            ex=settings.persistence_interval_seconds,
+            nx=True,
+        )
+
+        return created is True

@@ -9,8 +9,17 @@ repo = SessionStateRepository()
 repo.save(
     session_id="test-session",
     state={
-        "version": 1,
-        "nodes": [],
+        "version": 5,
+        "nodes": [
+            {
+                "id": "node-1",
+                "type": "lambda",
+                "position": {
+                    "x": 100,
+                    "y": 200,
+                },
+            }
+        ],
         "edges": [],
     },
 )

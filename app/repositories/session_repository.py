@@ -1,5 +1,7 @@
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
+from datetime import datetime, timezone
+from botocore.exceptions import ClientError
 
 from app.config.settings import settings
 from app.db.dynamodb import dynamodb
@@ -87,19 +89,58 @@ class SessionRepository:
         self,
         session_id: str,
         architecture: dict,
-    ) -> None:
+        version: int,
+    ) -> bool:
 
         item = {
-            "session_key": f"SESSION#{session_id}",
-            "item_type": "ARCHITECTURE",
-            **architecture,
+            "nodes": architecture.get("nodes", []),
+            "edges": architecture.get("edges", []),
+            "version": version,
+            "updated_at": datetime.now(
+                timezone.utc
+            ).isoformat(),
         }
 
         item = self._convert_floats(item)
 
-        self.table.put_item(
-            Item=item
-        )
+        try:
+            self.table.update_item(
+                Key={
+                    "session_key": f"SESSION#{session_id}",
+                    "item_type": "ARCHITECTURE",
+                },
+
+                UpdateExpression="""
+                    SET nodes = :nodes,
+                        edges = :edges,
+                        version = :version,
+                        updated_at = :updated_at
+                """,
+
+                ExpressionAttributeValues={
+                    ":nodes": item["nodes"],
+                    ":edges": item["edges"],
+                    ":version": item["version"],
+                    ":updated_at": item["updated_at"],
+                },
+
+                ConditionExpression="""
+                    attribute_not_exists(version)
+                    OR version < :version
+                """,
+            )
+
+            return True
+
+        except ClientError as error:
+
+            if (
+                error.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                return False
+
+            raise
 
     def get_architecture(
         self,
@@ -114,4 +155,7 @@ class SessionRepository:
         )
 
         return response.get("Item")
+
+
+        
         
