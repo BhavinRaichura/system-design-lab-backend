@@ -26,11 +26,17 @@ class Settings(BaseSettings):
     demo_user_id: str
 
     aws_region: str
+    aws_endpoint_url: str
     
     dynamodb_table_name: str
     dynamodb_endpoint_url: str | None = None
 
     redis_url: str
+
+    sqs_queue_url: str
+
+    persistence_interval_seconds: int = 5
+    session_state_ttl_seconds: int = 3600
 
     model_config = SettingsConfigDict(
         env_file=(

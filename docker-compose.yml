@@ -8,7 +8,7 @@ services:
       - "4566:4566"
 
     environment:
-      - SERVICES=dynamodb
+      - SERVICES=dynamodb,sqs
       - DEBUG=0
       - AWS_DEFAULT_REGION=ap-south-1
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
