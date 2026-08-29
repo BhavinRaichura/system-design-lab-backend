@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     persistence_interval_seconds: int = 5
     session_state_ttl_seconds: int = 3600
 
+    gemini_api_key: str
+    gemini_model: str
+
     model_config = SettingsConfigDict(
         env_file=(
             f"app/config/environments/"
