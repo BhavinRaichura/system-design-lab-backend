@@ -14,6 +14,6 @@ async def websocket_test(websocket: WebSocket):
             await websocket.send_text(
                 f"Server Received: {message}"
             )
-            
+            print("message: ", message)
     except WebSocketDisconnect:
         print("disconnected")
