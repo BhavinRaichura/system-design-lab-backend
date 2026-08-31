@@ -1,0 +1,13 @@
+from app.prompts.analyze_candidate_system_prompt_v1 import (
+    PROMPT as ANALYZE_CANDIDATE_SYSTEM_PROMPT,
+)
+
+from app.prompts.tutor_system_prompt import (
+    PROMPT as TUTOR_SYSTEM_PROMPT,
+)
+
+
+__all__ = [
+    "ANALYZE_CANDIDATE_SYSTEM_PROMPT",
+    "TUTOR_SYSTEM_PROMPT",
+]
