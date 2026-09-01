@@ -1,6 +1,6 @@
 # app/schemas/tutor.py
 
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, Field
 
 

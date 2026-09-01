@@ -10,6 +10,10 @@ from langgraph.runtime import Runtime
 from app.prompts import (
     ANALYZE_CANDIDATE_SYSTEM_PROMPT,
     TUTOR_SYSTEM_PROMPT,
+    INTERVIEW_CONTROLLER_SYSTEM_PROMPT,
+        QUESTION_PLANNER_SYSTEM_PROMPT,
+        QUESTION_REVIEW_SYSTEM_PROMPT,
+        TUTOR_SYSTEM_PROMPT,
 )
 
 from app.schemas.tutor import (
@@ -27,6 +31,9 @@ from app.services.difficulty_controller import (
     DifficultyController,
 )
 
+from app.services.phase_controller import (
+    PhaseController,
+)
 # use at the run time
 @dataclass
 class TutorRuntimeContext:
@@ -77,9 +84,12 @@ class TutorGraph:
             DifficultyController()
         )
 
+        self.phase_controller = PhaseController()
+
         self.context_builder = (
             TutorContextBuilder()
         )
+
 
         self.checkpointer = InMemorySaver()
 
@@ -318,12 +328,7 @@ class TutorGraph:
         print("\nBLOBS:")
         print(self.checkpointer.blobs)
 
-
-    def analyze_candidate(
-        self,
-        state: TutorState,
-        runtime: Runtime[TutorRuntimeContext],
-    ) -> TutorState:
+    def analyze_candidate(self, state, runtime):
 
         context = self.context_builder.build(
             session_id=runtime.context.session_id,
@@ -332,37 +337,14 @@ class TutorGraph:
         )
 
         prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                ANALYZE_CANDIDATE_SYSTEM_PROMPT,
-            ),
+            ("system", ANALYZE_CANDIDATE_SYSTEM_PROMPT),
             (
                 "human",
                 """
-                Problem:
+    Candidate's latest message:
 
-                {problem}
-
-                Architecture:
-
-                {architecture}
-
-                Interview phase:
-
-                {phase}
-
-                Candidate skill profile:
-
-                {skills}
-
-                Previous weaknesses:
-
-                {weaknesses}
-
-                Candidate's latest message:
-
-                {message}
-                """,
+    {user_message}
+    """
             ),
         ])
 
@@ -371,91 +353,50 @@ class TutorGraph:
                 context["problem"],
                 indent=2,
             ),
+
             architecture=json.dumps(
                 context.get("architecture") or {},
                 indent=2,
             ),
-            phase=context["interview_phase"],
-            skills=json.dumps(
-                state.get("skill_profile", {}),
-                indent=2,
-            ),
-            weaknesses=json.dumps(
-                state.get(
-                    "candidate_weaknesses",
-                    [],
-                ),
-                indent=2,
-            ),
-            message=runtime.context.user_message,
+
+            interview_phase=context["interview_phase"],
+            current_topic=context["current_topic"],
+            conversation_summary=context["conversation_summary"],
+
+            requirements_covered=context["requirements_covered"],
+            candidate_decisions=context["candidate_decisions"],
+            candidate_weaknesses=context["candidate_weaknesses"],
+
+            user_message=runtime.context.user_message,
         )
 
-        result = self.analysis_llm.invoke(
-            messages
-        )
-
-        analysis_data = result.model_dump()
+        result = self.analysis_llm.invoke(messages)
 
         return {
             **state,
 
-            "latest_analysis": analysis_data,
+            "latest_analysis": result.model_dump(),
 
             "current_topic": result.topic,
 
-            "candidate_decisions":
-                self._merge_unique(
-                    state.get(
-                        "candidate_decisions",
-                        [],
-                    ),
-                    result.candidate_decisions,
-                ),
+            "conversation_summary": result.conversation_summary,
 
-            "candidate_assumptions":
-                self._merge_unique(
-                    state.get(
-                        "candidate_assumptions",
-                        [],
-                    ),
-                    result.candidate_assumptions,
-                ),
+            "requirements_covered": self._merge_unique(
+                state["requirements_covered"],
+                result.requirements_covered,
+            ),
 
-            "candidate_strengths":
-                self._merge_unique(
-                    state.get(
-                        "candidate_strengths",
-                        [],
-                    ),
-                    result.candidate_strengths,
-                ),
+            "candidate_decisions": self._merge_unique(
+                state["candidate_decisions"],
+                result.candidate_decisions,
+            ),
 
-            "candidate_weaknesses":
-                self._merge_unique(
-                    state.get(
-                        "candidate_weaknesses",
-                        [],
-                    ),
-                    result.candidate_weaknesses,
-                ),
-
-            "requirements_covered":
-                self._merge_unique(
-                    state.get(
-                        "requirements_covered",
-                        [],
-                    ),
-                    result.requirements_covered,
-                ),
-
-            "candidate_summary":
-                result.conversation_summary,
-
-            "conversation_summary":
-                result.conversation_summary,
+            "candidate_weaknesses": self._merge_unique(
+                state["candidate_weaknesses"],
+                result.candidate_weaknesses,
+            ),
         }
 
-    
     def update_candidate_model(
         self,
         state: TutorState,
@@ -1482,7 +1423,7 @@ class TutorGraph:
             "conversation_summary":
                 result.conversation_summary,
         }
-    
+
 
     def update_evidence(
         self,
@@ -1504,53 +1445,74 @@ class TutorGraph:
             )
         )
 
-        response = state.get(
-            "tutor_response",
-            "",
-        )
+        # --------------------------------
+        # Record actual question
+        # --------------------------------
 
-        if response:
+        if (
+            state.get(
+                "next_decision"
+            )
+            in {
+                "ASK_QUESTION",
+                "MOVE_PHASE",
+            }
+            and state.get(
+                "tutor_response"
+            )
+        ):
 
             questions.append({
-                "question": response,
-                "topic": state.get(
-                    "current_topic"
-                ),
-                "action": state.get(
-                    "current_action"
-                ),
-                "question_type":
-                    state.get(
-                        "current_question_type"
-                    ),
-                "difficulty":
-                    state.get(
-                        "current_difficulty"
-                    ),
-            })
-
-            evidence.append({
-                "candidate_message":
-                    runtime.context.user_message,
-
-                "interviewer_response":
-                    response,
+                "question":
+                    state["tutor_response"],
 
                 "topic":
-                    state.get(
-                        "current_topic"
-                    ),
+                    state["current_topic"],
 
                 "action":
-                    state.get(
-                        "current_action"
-                    ),
+                    state["current_action"],
+
+                "question_type":
+                    state[
+                        "current_question_type"
+                    ],
 
                 "difficulty":
-                    state.get(
+                    state[
                         "current_difficulty"
-                    ),
+                    ],
             })
+
+        # --------------------------------
+        # Evidence
+        # --------------------------------
+
+        evidence.append({
+
+            "candidate_message":
+                runtime.context.user_message,
+
+            "interviewer_response":
+                state.get(
+                    "tutor_response",
+                    "",
+                ),
+
+            "topic":
+                state.get(
+                    "current_topic"
+                ),
+
+            "action":
+                state.get(
+                    "current_action"
+                ),
+
+            "difficulty":
+                state.get(
+                    "current_difficulty"
+                ),
+        })
 
         return {
             **state,
@@ -1558,13 +1520,13 @@ class TutorGraph:
             "questions_asked":
                 questions,
 
-            "evidence":
-                evidence,
-
             "questions_asked_count":
                 len(questions),
 
-            # Reset the bounded question loop
+            "evidence":
+                evidence,
+
+            # Reset question generation loop
             "question_retry_count": 0,
 
             "question_candidates": [],
@@ -1573,8 +1535,9 @@ class TutorGraph:
 
             "selected_question": "",
         }
+    
 
-
+   
     def evaluate(
         self,
         state: TutorState,
@@ -1818,3 +1781,6 @@ class TutorGraph:
                 user_message=user_message,
             ),
         )
+
+    
+tutor = TutorGraph()
